@@ -1,34 +1,62 @@
 import 'package:flutter/material.dart';
+import '../models/services/banco_local_service.dart';
+import '../models/services/preferences_service.dart';
 import '../models/usuario.dart';
 
-/// ViewModel responsável pela autenticação, cadastro e tema (Fase 1 em memória).
+/// ViewModel responsável pela autenticação, cadastro, sessão e tema persistente.
 class AuthViewModel extends ChangeNotifier {
-  final List<Usuario> _usuarios = <Usuario>[
-    const Usuario(
-      id: 'usr-demo',
-      nome: 'Aluno Demo',
-      email: 'aluno@editdoc.com',
-      senha: '123456',
-    ),
-  ];
+  final PreferencesService _preferencesService;
+  final BancoLocalService _bancoLocalService;
+
+  AuthViewModel({
+    PreferencesService? preferencesService,
+    BancoLocalService? bancoLocalService,
+  })  : _preferencesService = preferencesService ?? PreferencesService(),
+        _bancoLocalService = bancoLocalService ?? BancoLocalService();
 
   Usuario? _usuarioAtual;
   bool _temaEscuro = false;
+  bool _carregando = false;
+  bool _inicializado = false;
   String? _erroMensagem;
 
   Usuario? get usuarioAtual => _usuarioAtual;
   bool get estaAutenticado => _usuarioAtual != null;
   bool get temaEscuro => _temaEscuro;
   ThemeMode get themeMode => _temaEscuro ? ThemeMode.dark : ThemeMode.light;
+  bool get carregando => _carregando;
+  bool get inicializado => _inicializado;
   String? get erroMensagem => _erroMensagem;
 
-  /// Alterna entre tema claro e escuro e notifica a interface.
-  void alternarTema() {
-    _temaEscuro = !_temaEscuro;
+  /// Carrega tema, garante conta demo e restaura a sessão salva localmente.
+  Future<void> inicializar() async {
+    _temaEscuro = await _preferencesService.carregarTemaEscuro();
+    await _bancoLocalService.garantirUsuarioDemo();
+
+    final Usuario? sessaoSalva =
+        await _preferencesService.carregarSessaoUsuario();
+    if (sessaoSalva != null) {
+      final Usuario? usuarioValido =
+          await _bancoLocalService.buscarUsuarioPorEmail(sessaoSalva.email);
+      if (usuarioValido != null) {
+        _usuarioAtual = usuarioValido;
+      } else {
+        await _preferencesService.limparSessaoUsuario();
+      }
+    }
+
+    _inicializado = true;
     notifyListeners();
   }
 
-  /// Limpa a mensagem de erro exibida nas telas de autenticação.
+  /// Alterna entre tema claro e escuro persistindo a escolha no shared_preferences.
+  Future<void> alternarTema() async {
+    _temaEscuro = !_temaEscuro;
+    notifyListeners();
+    await _preferencesService.salvarTemaEscuro(_temaEscuro);
+  }
+
+  /// Limpa a mensagem de erro atual.
   void limparErro() {
     if (_erroMensagem != null) {
       _erroMensagem = null;
@@ -36,56 +64,60 @@ class AuthViewModel extends ChangeNotifier {
     }
   }
 
-  /// Autentica um usuário cadastrado na lista em memória.
-  bool login(String email, String senha) {
-    final String emailNormalizado = email.trim().toLowerCase();
-    for (final Usuario usuario in _usuarios) {
-      if (usuario.email == emailNormalizado && usuario.senha == senha) {
-        _usuarioAtual = usuario;
-        _erroMensagem = null;
-        notifyListeners();
-        return true;
-      }
+  /// Autentica o usuário no repositório local e persiste a sessão ativa.
+  Future<bool> login(String email, String senha) async {
+    _carregando = true;
+    _erroMensagem = null;
+    notifyListeners();
+
+    final Usuario? usuario = await _bancoLocalService.autenticar(email, senha);
+    if (usuario != null) {
+      await _preferencesService.salvarSessaoUsuario(usuario);
+      _usuarioAtual = usuario;
+      _carregando = false;
+      notifyListeners();
+      return true;
     }
 
     _erroMensagem = 'E-mail ou senha inválidos.';
+    _carregando = false;
     notifyListeners();
     return false;
   }
 
-  /// Cadastra um novo usuário se o e-mail ainda não existir.
-  bool cadastrar({
+  /// Cadastra um novo usuário, valida duplicidade de e-mail e inicia a sessão.
+  Future<bool> cadastrar({
     required String nome,
     required String email,
     required String senha,
-  }) {
-    final String emailNormalizado = email.trim().toLowerCase();
-    final bool jaExiste = _usuarios.any(
-      (Usuario u) => u.email == emailNormalizado,
+  }) async {
+    _carregando = true;
+    _erroMensagem = null;
+    notifyListeners();
+
+    final Usuario? novoUsuario = await _bancoLocalService.cadastrarUsuario(
+      nome: nome,
+      email: email,
+      senha: senha,
     );
 
-    if (jaExiste) {
+    if (novoUsuario == null) {
       _erroMensagem = 'Já existe uma conta cadastrada com este e-mail.';
+      _carregando = false;
       notifyListeners();
       return false;
     }
 
-    final Usuario novoUsuario = Usuario(
-      id: 'usr-${DateTime.now().microsecondsSinceEpoch}',
-      nome: nome.trim(),
-      email: emailNormalizado,
-      senha: senha,
-    );
-
-    _usuarios.add(novoUsuario);
+    await _preferencesService.salvarSessaoUsuario(novoUsuario);
     _usuarioAtual = novoUsuario;
-    _erroMensagem = null;
+    _carregando = false;
     notifyListeners();
     return true;
   }
 
-  /// Encerra a sessão atual em memória.
-  void logout() {
+  /// Encerra a sessão atual e remove os dados persistidos da sessão.
+  Future<void> logout() async {
+    await _preferencesService.limparSessaoUsuario();
     _usuarioAtual = null;
     _erroMensagem = null;
     notifyListeners();

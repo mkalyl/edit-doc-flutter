@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import '../models/documento.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import '../viewmodels/documentos_viewmodel.dart';
+import 'widgets/botao_alternar_tema.dart';
+import 'widgets/confirmar_exclusao_dialog.dart';
 import 'widgets/documento_card.dart';
 import 'widgets/estado_vazio_widget.dart';
+import 'widgets/seletor_categoria.dart';
 
-/// Tela principal com a listagem de documentos (Rota: /home).
+/// Tela principal com a listagem e gestão CRUD de documentos (Rota: /home).
 class HomeView extends StatefulWidget {
   final AuthViewModel authViewModel;
   final DocumentosViewModel documentosViewModel;
@@ -24,41 +27,58 @@ class _HomeViewState extends State<HomeView> {
   final TextEditingController _buscaController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final String? email = widget.authViewModel.usuarioAtual?.email;
+      if (email != null &&
+          widget.documentosViewModel.autorAtualEmail != email.toLowerCase()) {
+        widget.documentosViewModel.carregarDocumentos(autorEmail: email);
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _buscaController.dispose();
     super.dispose();
   }
 
-  void _abrirVisualizacao(Documento documento) {
-    showDialog<void>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: Text(documento.titulo),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Chip(label: Text(documento.categoria)),
-                const SizedBox(height: 12),
-                Text(documento.conteudo),
-              ],
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Fechar'),
-            ),
-          ],
-        );
-      },
+  void _abrirEditor([Documento? documento]) {
+    Navigator.of(context).pushNamed('/editor', arguments: documento);
+  }
+
+  Future<void> _excluirDocumento(Documento documento) async {
+    final bool confirmado = await confirmarExclusaoDocumento(context, documento);
+    if (!confirmado || !mounted) {
+      return;
+    }
+
+    final bool sucesso = await widget.documentosViewModel.excluirDocumento(
+      documento.id,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          sucesso
+              ? 'Documento excluído com sucesso!'
+              : (widget.documentosViewModel.erroMensagem ??
+                  'Erro ao excluir documento.'),
+        ),
+      ),
     );
   }
 
-  void _sair() {
-    widget.authViewModel.logout();
+  Future<void> _sair() async {
+    await widget.authViewModel.logout();
+    widget.documentosViewModel.limparEstadoLocal();
+    if (!mounted) {
+      return;
+    }
     Navigator.of(context).pushNamedAndRemoveUntil(
       '/',
       (Route<dynamic> route) => false,
@@ -82,6 +102,9 @@ class _HomeViewState extends State<HomeView> {
             widget.authViewModel.usuarioAtual?.nome ?? 'Usuário';
         final List<Documento> documentos =
             widget.documentosViewModel.documentos;
+        final bool carregando = widget.documentosViewModel.carregando;
+        final bool semDocumentos =
+            widget.documentosViewModel.totalDocumentos == 0;
 
         return Scaffold(
           appBar: AppBar(
@@ -96,23 +119,18 @@ class _HomeViewState extends State<HomeView> {
               ],
             ),
             actions: <Widget>[
-              IconButton(
-                tooltip: widget.authViewModel.temaEscuro
-                    ? 'Tema claro'
-                    : 'Tema escuro',
-                icon: Icon(
-                  widget.authViewModel.temaEscuro
-                      ? Icons.light_mode_outlined
-                      : Icons.dark_mode_outlined,
-                ),
-                onPressed: widget.authViewModel.alternarTema,
-              ),
+              BotaoAlternarTema(authViewModel: widget.authViewModel),
               IconButton(
                 tooltip: 'Sair',
                 icon: const Icon(Icons.logout),
                 onPressed: _sair,
               ),
             ],
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _abrirEditor(),
+            icon: const Icon(Icons.add),
+            label: const Text('Novo Documento'),
           ),
           body: Center(
             child: ConstrainedBox(
@@ -128,56 +146,59 @@ class _HomeViewState extends State<HomeView> {
                       decoration: InputDecoration(
                         hintText: 'Buscar por título ou conteúdo...',
                         prefixIcon: const Icon(Icons.search),
-                        suffixIcon: widget.documentosViewModel.termoBusca.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: 'Limpar busca',
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  _buscaController.clear();
-                                  widget.documentosViewModel.atualizarBusca('');
-                                },
-                              ),
+                        suffixIcon:
+                            widget.documentosViewModel.termoBusca.isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Limpar busca',
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      _buscaController.clear();
+                                      widget.documentosViewModel
+                                          .atualizarBusca('');
+                                    },
+                                  ),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: categorias.map((String categoria) {
-                          final bool selecionada = widget.documentosViewModel
-                                  .categoriaSelecionada ==
-                              categoria;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(categoria),
-                              selected: selecionada,
-                              onSelected: (_) {
-                                widget.documentosViewModel
-                                    .selecionarCategoria(categoria);
-                              },
-                            ),
-                          );
-                        }).toList(),
-                      ),
+                    SeletorCategoria(
+                      categorias: categorias,
+                      selecionada:
+                          widget.documentosViewModel.categoriaSelecionada,
+                      aoSelecionar:
+                          widget.documentosViewModel.selecionarCategoria,
+                      rolavelHorizontal: true,
                     ),
                     const SizedBox(height: 12),
+                    if (carregando) const LinearProgressIndicator(),
                     Expanded(
                       child: documentos.isEmpty
-                          ? const EstadoVazioWidget(
+                          ? EstadoVazioWidget(
                               icone: Icons.article_outlined,
-                              titulo: 'Nenhum documento encontrado',
-                              mensagem:
-                                  'Ajuste o filtro de busca ou a categoria selecionada.',
+                              titulo: semDocumentos
+                                  ? 'Nenhum documento criado ainda'
+                                  : 'Nenhum documento encontrado',
+                              mensagem: semDocumentos
+                                  ? 'Toque em "Novo Documento" para escrever seu primeiro texto.'
+                                  : 'Ajuste o filtro de busca ou a categoria selecionada.',
+                              acao: semDocumentos
+                                  ? FilledButton.icon(
+                                      onPressed: () => _abrirEditor(),
+                                      icon: const Icon(Icons.add),
+                                      label: const Text('Criar documento'),
+                                    )
+                                  : null,
                             )
                           : ListView.builder(
+                              padding: const EdgeInsets.only(bottom: 80),
                               itemCount: documentos.length,
                               itemBuilder: (BuildContext context, int index) {
                                 final Documento doc = documentos[index];
                                 return DocumentoCard(
                                   documento: doc,
-                                  aoTocar: () => _abrirVisualizacao(doc),
+                                  aoTocar: () => _abrirEditor(doc),
+                                  aoEditar: () => _abrirEditor(doc),
+                                  aoExcluir: () => _excluirDocumento(doc),
                                 );
                               },
                             ),

@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import '../utils/validadores.dart';
 import '../viewmodels/auth_viewmodel.dart';
+import '../viewmodels/documentos_viewmodel.dart';
+import 'widgets/botao_alternar_tema.dart';
 import 'widgets/cabecalho_auth.dart';
 import 'widgets/campo_texto_padrao.dart';
 
 /// Tela inicial de autenticação (Rota: /).
 class LoginView extends StatefulWidget {
   final AuthViewModel authViewModel;
+  final DocumentosViewModel documentosViewModel;
 
   const LoginView({
     super.key,
     required this.authViewModel,
+    required this.documentosViewModel,
   });
 
   @override
@@ -30,12 +34,13 @@ class _LoginViewState extends State<LoginView> {
     super.dispose();
   }
 
-  void _submeterLogin() {
-    if (!(_formKey.currentState?.validate() ?? false)) {
+  Future<void> _submeterLogin() async {
+    if (widget.authViewModel.carregando ||
+        !(_formKey.currentState?.validate() ?? false)) {
       return;
     }
 
-    final bool sucesso = widget.authViewModel.login(
+    final bool sucesso = await widget.authViewModel.login(
       _emailController.text,
       _senhaController.text,
     );
@@ -44,7 +49,13 @@ class _LoginViewState extends State<LoginView> {
       return;
     }
 
-    if (sucesso) {
+    if (sucesso && widget.authViewModel.usuarioAtual != null) {
+      await widget.documentosViewModel.carregarDocumentos(
+        autorEmail: widget.authViewModel.usuarioAtual!.email,
+      );
+      if (!mounted) {
+        return;
+      }
       Navigator.of(context).pushReplacementNamed('/home');
     } else {
       final String erro =
@@ -62,21 +73,13 @@ class _LoginViewState extends State<LoginView> {
     return ListenableBuilder(
       listenable: widget.authViewModel,
       builder: (BuildContext context, _) {
+        final bool carregando = widget.authViewModel.carregando;
+
         return Scaffold(
           appBar: AppBar(
             title: const Text('EditDoc Flutter'),
             actions: <Widget>[
-              IconButton(
-                tooltip: widget.authViewModel.temaEscuro
-                    ? 'Mudar para tema claro'
-                    : 'Mudar para tema escuro',
-                icon: Icon(
-                  widget.authViewModel.temaEscuro
-                      ? Icons.light_mode_outlined
-                      : Icons.dark_mode_outlined,
-                ),
-                onPressed: widget.authViewModel.alternarTema,
-              ),
+              BotaoAlternarTema(authViewModel: widget.authViewModel),
             ],
           ),
           body: Center(
@@ -92,7 +95,7 @@ class _LoginViewState extends State<LoginView> {
                       const CabecalhoAuth(
                         titulo: 'Bem-vindo de volta',
                         subtitulo:
-                            'Entre para acessar seus documentos organizados em MVVM.',
+                            'Entre para acessar seus documentos salvos localmente.',
                       ),
                       const SizedBox(height: 28),
                       CampoTextoPadrao(
@@ -130,19 +133,27 @@ class _LoginViewState extends State<LoginView> {
                       ),
                       const SizedBox(height: 20),
                       FilledButton.icon(
-                        onPressed: _submeterLogin,
-                        icon: const Icon(Icons.login),
-                        label: const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Text('Entrar'),
+                        onPressed: carregando ? null : _submeterLogin,
+                        icon: carregando
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.login),
+                        label: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(carregando ? 'Entrando...' : 'Entrar'),
                         ),
                       ),
                       const SizedBox(height: 12),
                       OutlinedButton(
-                        onPressed: () {
-                          widget.authViewModel.limparErro();
-                          Navigator.of(context).pushNamed('/cadastro');
-                        },
+                        onPressed: carregando
+                            ? null
+                            : () {
+                                widget.authViewModel.limparErro();
+                                Navigator.of(context).pushNamed('/cadastro');
+                              },
                         child: const Padding(
                           padding: EdgeInsets.symmetric(vertical: 12),
                           child: Text('Criar nova conta'),
