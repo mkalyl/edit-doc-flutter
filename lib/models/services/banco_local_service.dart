@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../utils/json_helpers.dart';
 import '../documento.dart';
 import '../usuario.dart';
 import 'documento_storage_service.dart';
@@ -7,8 +8,15 @@ import 'documento_storage_service.dart';
 /// Repositório local centralizado para persistência de Usuários e Documentos.
 class BancoLocalService {
   static const String _chaveUsuarios = 'edit_doc_usuarios_json';
+  static const Usuario _usuarioDemoPadrao = Usuario(
+    id: 'usr-demo',
+    nome: 'Aluno Demo',
+    email: 'aluno@editdoc.com',
+    senha: '123456',
+  );
 
   final DocumentoStorageService documentos;
+  final List<Usuario> _cacheEmMemoria = <Usuario>[];
 
   BancoLocalService({DocumentoStorageService? documentoStorageService})
       : documentos = documentoStorageService ?? DocumentoStorageService();
@@ -16,48 +24,49 @@ class BancoLocalService {
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
   Future<List<Usuario>> _lerUsuarios() async {
-    final SharedPreferences prefs = await _prefs;
-    final String? jsonBruto = prefs.getString(_chaveUsuarios);
-    if (jsonBruto == null || jsonBruto.trim().isEmpty) {
-      return <Usuario>[];
-    }
-
     try {
-      final Object? decodificado = jsonDecode(jsonBruto);
-      if (decodificado is! List<dynamic>) {
-        return <Usuario>[];
+      final SharedPreferences prefs = await _prefs;
+      final String? jsonBruto = prefs.getString(_chaveUsuarios);
+      if (jsonBruto != null && jsonBruto.trim().isNotEmpty) {
+        final List<Usuario> lidos = decodificarListaJson(jsonBruto)
+            .map(Usuario.fromMap)
+            .toList();
+        _cacheEmMemoria
+          ..clear()
+          ..addAll(lidos);
+        return List<Usuario>.from(lidos);
       }
-      return decodificado
-          .whereType<Map<String, dynamic>>()
-          .map(Usuario.fromMap)
-          .toList();
     } catch (_) {
-      return <Usuario>[];
+      // Usa fallback em memória se localStorage estiver restrito.
     }
+    return List<Usuario>.from(_cacheEmMemoria);
   }
 
   Future<void> _salvarUsuarios(List<Usuario> usuarios) async {
-    final SharedPreferences prefs = await _prefs;
-    final List<Map<String, dynamic>> mapas =
-        usuarios.map((Usuario u) => u.toMap()).toList();
-    await prefs.setString(_chaveUsuarios, jsonEncode(mapas));
+    _cacheEmMemoria
+      ..clear()
+      ..addAll(usuarios);
+    try {
+      final SharedPreferences prefs = await _prefs;
+      final List<Map<String, dynamic>> mapas =
+          usuarios.map((Usuario u) => u.toMap()).toList();
+      await prefs.setString(_chaveUsuarios, jsonEncode(mapas));
+    } catch (_) {
+      // Mantém dados em memória se localStorage estiver restrito.
+    }
   }
 
-  /// Cria a conta padrão de demonstração caso ainda não exista nenhum usuário salvo.
+  /// Garante que a conta de demonstração esteja sempre disponível.
   Future<void> garantirUsuarioDemo() async {
     final List<Usuario> usuarios = await _lerUsuarios();
-    if (usuarios.isNotEmpty) {
+    final bool possuiDemo = usuarios.any(
+      (Usuario u) => u.email.trim().toLowerCase() == _usuarioDemoPadrao.email,
+    );
+    if (possuiDemo) {
       return;
     }
 
-    usuarios.add(
-      const Usuario(
-        id: 'usr-demo',
-        nome: 'Aluno Demo',
-        email: 'aluno@editdoc.com',
-        senha: '123456',
-      ),
-    );
+    usuarios.add(_usuarioDemoPadrao);
     await _salvarUsuarios(usuarios);
   }
 
@@ -69,7 +78,7 @@ class BancoLocalService {
     final String emailNormalizado = email.trim().toLowerCase();
     final List<Usuario> usuarios = await _lerUsuarios();
     for (final Usuario usuario in usuarios) {
-      if (usuario.email.toLowerCase() == emailNormalizado) {
+      if (usuario.email.trim().toLowerCase() == emailNormalizado) {
         return usuario;
       }
     }

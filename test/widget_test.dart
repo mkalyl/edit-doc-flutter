@@ -20,7 +20,7 @@ void main() {
   group('Validadores e Serialização de Modelos', () {
     test('Validadores validam nome, e-mail, senha e confirmação', () {
       expect(Validadores.validarNome('Ab'), isNotNull);
-      expect(Validadores.validarNome('Pedro Tigre'), isNull);
+      expect(Validadores.validarNome('Mendell Kalyl'), isNull);
 
       expect(Validadores.validarEmail('invalido'), isNotNull);
       expect(Validadores.validarEmail('aluno@editdoc.com'), isNull);
@@ -41,8 +41,8 @@ void main() {
     test('Documento e Usuario serializam e desserializam via JSON', () {
       const Usuario usuario = Usuario(
         id: 'u1',
-        nome: 'Pedro',
-        email: 'pedro@teste.com',
+        nome: 'Mendell',
+        email: 'aluno@teste.com',
         senha: '123456',
       );
       final Usuario usuarioCopia = Usuario.fromJson(usuario.toJson());
@@ -55,7 +55,7 @@ void main() {
         titulo: 'Plano de Aula',
         conteudo: 'Conteúdo de teste para contagem de palavras.',
         categoria: 'Estudos',
-        autorEmail: 'pedro@teste.com',
+        autorEmail: 'aluno@teste.com',
         criadoEm: agora,
         atualizadoEm: agora,
       );
@@ -76,13 +76,13 @@ void main() {
 
       const Usuario usuario = Usuario(
         id: 'u1',
-        nome: 'Pedro',
-        email: 'pedro@teste.com',
+        nome: 'Mendell',
+        email: 'aluno@teste.com',
         senha: '123456',
       );
       await prefs.salvarSessaoUsuario(usuario);
       final Usuario? sessao = await prefs.carregarSessaoUsuario();
-      expect(sessao?.email, 'pedro@teste.com');
+      expect(sessao?.email, 'aluno@teste.com');
 
       await prefs.limparSessaoUsuario();
       expect(await prefs.carregarSessaoUsuario(), isNull);
@@ -161,9 +161,17 @@ void main() {
       expect(docsRecarregado.documentos.first.titulo, 'Nota Persistente');
     });
 
-    test('BancoLocalService impede cadastro duplicado', () async {
+    test('BancoLocalService autentica conta demo e impede cadastro duplicado',
+        () async {
       final BancoLocalService banco = BancoLocalService();
       await banco.garantirUsuarioDemo();
+      final Usuario? demo = await banco.autenticar(
+        'aluno@editdoc.com',
+        '123456',
+      );
+      expect(demo, isNotNull);
+      expect(demo?.email, 'aluno@editdoc.com');
+
       final Usuario? duplicado = await banco.cadastrarUsuario(
         nome: 'Duplicado',
         email: 'aluno@editdoc.com',

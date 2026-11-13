@@ -37,6 +37,7 @@ Este arquivo deve ser consultado e atualizado a cada feature, refactor ou corre�
 | `lib/models/services/documento_storage_service.dart` | Service | `DocumentoStorageService` (`garantirDocumentosIniciais`, `listarDocumentos`, `criarDocumento`, `atualizarDocumento`, `excluirDocumento`) |
 | `lib/models/services/banco_local_service.dart` | Service | `BancoLocalService` (`garantirUsuarioDemo`, `listarUsuarios`, `buscarUsuarioPorEmail`, `autenticar`, `cadastrarUsuario`, delegação `documentos`) |
 | `lib/utils/validadores.dart` | Utils | `Validadores` (`validarNome`, `validarEmail`, `validarSenha`, `validarConfirmacaoSenha`, `validarCampoObrigatorio`) |
+| `lib/utils/json_helpers.dart` | Utils | `decodificarListaJson`, `decodificarMapaJson` (conversão segura Web/VM) |
 | `lib/viewmodels/auth_viewmodel.dart` | ViewModel | `AuthViewModel` (`inicializar`, `alternarTema`, `login`, `cadastrar`, `logout`, `limparErro`) |
 | `lib/viewmodels/documentos_viewmodel.dart` | ViewModel | `DocumentosViewModel` (`carregarDocumentos`, `criarDocumento`, `atualizarDocumento`, `excluirDocumento`, `atualizarBusca`, `selecionarCategoria`, `limparEstadoLocal`) |
 | `lib/views/login_view.dart` | View | `LoginView` (Rota `/`) |
@@ -57,3 +58,4 @@ Este arquivo deve ser consultado e atualizado a cada feature, refactor ou corre�
 - **Etapas 1–3 (Base):** Estrutura MVVM, DevContainer, Launch config e manifesto Web criados.
 - **Etapa 4 (Fase 1):** Migração das 3 telas iniciais para MVVM (`ChangeNotifier` + `ListenableBuilder`) e criação do relatório em `ARQUITETURA.md` (tag `etapa-4` / branch `etapa-4-mvvm`).
 - **Etapa 5 (Fase 2):** Persistência local com `shared_preferences` (`PreferencesService`, `DocumentoStorageService`, `BancoLocalService`), adição da tela `EditorView` (`/editor`) e CRUD completo com preservação de estado após reload (`F5`).
+- **Fix Web JSON/Storage:** Adicionado `lib/utils/json_helpers.dart` com conversão segura de `Map<dynamic, dynamic>` para `Map<String, dynamic>` em Flutter Web debug (`dartdevc`), garantia contínua da conta demo em `BancoLocalService.garantirUsuarioDemo()` e fallback em memória nos serviços caso o `localStorage` esteja restrito em iframes, além de botão rápido para preencher conta demo na `LoginView`.

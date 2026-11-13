@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../utils/json_helpers.dart';
 
 /// Modelo de domínio de um documento com suporte a cópia e serialização JSON.
 class Documento {
@@ -86,9 +87,7 @@ class Documento {
 
   /// Desserializa um documento a partir de uma string JSON.
   factory Documento.fromJson(String origem) {
-    final Map<String, dynamic> mapa =
-        jsonDecode(origem) as Map<String, dynamic>;
-    return Documento.fromMap(mapa);
+    return Documento.fromMap(decodificarMapaJson(origem));
   }
 
   /// Retorna um resumo curto do conteúdo para exibição em listas.

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../utils/json_helpers.dart';
 import '../documento.dart';
 
 /// Serviço responsável pelo CRUD persistente de documentos via JSON no shared_preferences.
@@ -7,44 +8,58 @@ class DocumentoStorageService {
   static const String _chaveDocumentos = 'edit_doc_documentos_json';
   static const String _prefixoIniciais = 'edit_doc_iniciais_';
 
+  final List<Documento> _cacheEmMemoria = <Documento>[];
+  final Set<String> _iniciaisEmMemoria = <String>{};
+
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
   /// Lê todos os documentos armazenados no JSON local.
   Future<List<Documento>> _lerTodos() async {
-    final SharedPreferences prefs = await _prefs;
-    final String? jsonBruto = prefs.getString(_chaveDocumentos);
-    if (jsonBruto == null || jsonBruto.trim().isEmpty) {
-      return <Documento>[];
-    }
-
     try {
-      final Object? decodificado = jsonDecode(jsonBruto);
-      if (decodificado is! List<dynamic>) {
-        return <Documento>[];
+      final SharedPreferences prefs = await _prefs;
+      final String? jsonBruto = prefs.getString(_chaveDocumentos);
+      if (jsonBruto != null && jsonBruto.trim().isNotEmpty) {
+        final List<Documento> lidos = decodificarListaJson(jsonBruto)
+            .map(Documento.fromMap)
+            .toList();
+        _cacheEmMemoria
+          ..clear()
+          ..addAll(lidos);
+        return List<Documento>.from(lidos);
       }
-      return decodificado
-          .whereType<Map<String, dynamic>>()
-          .map(Documento.fromMap)
-          .toList();
     } catch (_) {
-      return <Documento>[];
+      // Usa fallback em memória se localStorage estiver restrito.
     }
+    return List<Documento>.from(_cacheEmMemoria);
   }
 
   /// Grava a lista completa de documentos serializada em JSON.
   Future<void> _salvarTodos(List<Documento> documentos) async {
-    final SharedPreferences prefs = await _prefs;
-    final List<Map<String, dynamic>> mapas =
-        documentos.map((Documento d) => d.toMap()).toList();
-    await prefs.setString(_chaveDocumentos, jsonEncode(mapas));
+    _cacheEmMemoria
+      ..clear()
+      ..addAll(documentos);
+    try {
+      final SharedPreferences prefs = await _prefs;
+      final List<Map<String, dynamic>> mapas =
+          documentos.map((Documento d) => d.toMap()).toList();
+      await prefs.setString(_chaveDocumentos, jsonEncode(mapas));
+    } catch (_) {
+      // Mantém dados em memória se localStorage estiver restrito.
+    }
   }
 
   /// Garante documentos iniciais de boas-vindas apenas no primeiro acesso do usuário.
   Future<void> garantirDocumentosIniciais(String autorEmail) async {
     final String email = autorEmail.trim().toLowerCase();
-    final SharedPreferences prefs = await _prefs;
     final String chaveInicial = '$_prefixoIniciais$email';
-    if (prefs.getBool(chaveInicial) ?? false) {
+
+    bool jaInicializado = _iniciaisEmMemoria.contains(email);
+    try {
+      final SharedPreferences prefs = await _prefs;
+      jaInicializado = jaInicializado || (prefs.getBool(chaveInicial) ?? false);
+    } catch (_) {}
+
+    if (jaInicializado) {
       return;
     }
 
@@ -82,7 +97,11 @@ class DocumentoStorageService {
       await _salvarTodos(todos);
     }
 
-    await prefs.setBool(chaveInicial, true);
+    _iniciaisEmMemoria.add(email);
+    try {
+      final SharedPreferences prefs = await _prefs;
+      await prefs.setBool(chaveInicial, true);
+    } catch (_) {}
   }
 
   /// Lista os documentos pertencentes ao usuário autenticado.

@@ -166,10 +166,25 @@ class _LoginViewState extends State<LoginView> {
                           color: cores.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Text(
-                          'Conta de demonstração: aluno@editdoc.com / 123456',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodySmall,
+                        child: Column(
+                          children: <Widget>[
+                            Text(
+                              'Conta de demonstração: aluno@editdoc.com / 123456',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 6),
+                            TextButton(
+                              onPressed: carregando
+                                  ? null
+                                  : () {
+                                      _emailController.text =
+                                          'aluno@editdoc.com';
+                                      _senhaController.text = '123456';
+                                    },
+                              child: const Text('Preencher conta demo'),
+                            ),
+                          ],
                         ),
                       ),
                     ],

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../utils/json_helpers.dart';
 
 /// Modelo de domínio que representa um usuário com suporte a serialização JSON.
 class Usuario {
@@ -37,8 +38,6 @@ class Usuario {
 
   /// Desserializa um usuário a partir de uma string JSON.
   factory Usuario.fromJson(String origem) {
-    final Map<String, dynamic> mapa =
-        jsonDecode(origem) as Map<String, dynamic>;
-    return Usuario.fromMap(mapa);
+    return Usuario.fromMap(decodificarMapaJson(origem));
   }
 }
