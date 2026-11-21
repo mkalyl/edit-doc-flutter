@@ -1,0 +1,98 @@
+name: Build APK e Deploy GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Garantir estrutura Android e configurar Gradle
+        run: |
+          if [ ! -d "android" ]; then
+            flutter create --platforms=android --project-name edit_doc_flutter --org com.editdoc .
+            git checkout -- pubspec.yaml lib/ test/ web/ README.md || true
+          fi
+          if [ -f "android/gradle.properties" ]; then
+            sed -i 's/-Xmx[0-9]*[gGmM]/-Xmx1536m/g' android/gradle.properties
+            grep -q "org.gradle.daemon=false" android/gradle.properties || echo "org.gradle.daemon=false" >> android/gradle.properties
+          fi
+          cat android/gradle.properties
+
+      - name: Instalar dependências, analisar e testar
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Compilar APK Android (release arm64)
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Empacotar pasta android para versionamento
+        run: tar --exclude='android/.gradle' --exclude='android/build' --exclude='android/local.properties' -czf android-files.tar.gz android
+
+      - name: Compilar versão Web para GitHub Pages
+        run: flutter build web --release --base-href "/edit-doc-flutter/"
+
+      - name: Publicar versão Web na branch gh-pages
+        run: |
+          cd build/web
+          touch .nojekyll
+          git init
+          git config user.name "Mendell Kalyl"
+          git config user.email "mendellkalyl4@gmail.com"
+          git checkout -b gh-pages
+          git add .
+          git commit -m "Publica versao Web no GitHub Pages"
+          git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push -f origin gh-pages
+          cd ../..
+
+      - name: Configurar GitHub Pages na branch gh-pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method POST "repos/${{ github.repository }}/pages" \
+            -f source[branch]=gh-pages \
+            -f source[path]="/" || \
+          gh api --method PUT "repos/${{ github.repository }}/pages" \
+            -f source[branch]=gh-pages \
+            -f source[path]="/" || true
+
+      - name: Publicar app-release.apk na Release v1.0.0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view v1.0.0 >/dev/null 2>&1; then
+            gh release upload v1.0.0 build/app/outputs/flutter-apk/app-release.apk android-files.tar.gz --clobber
+          else
+            gh release create v1.0.0 \
+              build/app/outputs/flutter-apk/app-release.apk \
+              android-files.tar.gz \
+              --title "EditDoc Flutter v1.0.0 (APK + Web)" \
+              --notes "Release gerada automaticamente com app-release.apk (android-arm64) e arquivos Android."
+          fi
