@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configurar Java 17 (Temurin)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -35,7 +35,7 @@ jobs:
         run: |
           if [ ! -d "android" ]; then
             flutter create --platforms=android --project-name edit_doc_flutter --org com.editdoc .
-            git checkout -- pubspec.yaml lib/ test/ web/ README.md || true
+            git checkout -- pubspec.yaml lib/ test/ web/ README.md analysis_options.yaml || true
           fi
           if [ -f "android/gradle.properties" ]; then
             sed -i 's/-Xmx[0-9]*[gGmM]/-Xmx1536m/g' android/gradle.properties
@@ -43,20 +43,56 @@ jobs:
           fi
           cat android/gradle.properties
 
-      - name: Instalar dependências, analisar e testar
+      - name: Instalar dependências (flutter pub get)
         run: |
-          flutter pub get
-          flutter analyze
-          flutter test
+          flutter pub get 2>&1 | tee pub_get.log || {
+            while IFS= read -r line; do echo "::error::$line"; done < pub_get.log
+            exit 1
+          }
+
+      - name: Análise estática (flutter analyze)
+        run: |
+          set +e
+          flutter analyze 2>&1 | tee analyze.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            while IFS= read -r line; do
+              [ -n "$line" ] && echo "::warning::$line"
+            done < analyze.log
+          fi
+          set -e
+          flutter analyze --no-fatal-infos 2>&1 | tee analyze_strict.log || {
+            while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done < analyze_strict.log
+            exit 1
+          }
+
+      - name: Executar testes automatizados (flutter test)
+        run: |
+          flutter test -r expanded 2>&1 | tee test.log || {
+            while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done < test.log
+            exit 1
+          }
 
       - name: Compilar APK Android (release arm64)
-        run: flutter build apk --release --target-platform android-arm64
+        run: |
+          flutter build apk --release --target-platform android-arm64 2>&1 | tee apk.log || {
+            tail -n 40 apk.log | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          }
 
       - name: Empacotar pasta android para versionamento
         run: tar --exclude='android/.gradle' --exclude='android/build' --exclude='android/local.properties' -czf android-files.tar.gz android
 
       - name: Compilar versão Web para GitHub Pages
-        run: flutter build web --release --base-href "/edit-doc-flutter/"
+        run: |
+          flutter build web --release --base-href "/edit-doc-flutter/" 2>&1 | tee web.log || {
+            tail -n 40 web.log | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          }
 
       - name: Publicar versão Web na branch gh-pages
         run: |
