@@ -58,3 +58,14 @@ Na segunda fase, a aplicação passou a persistir preferências, sessão, usuár
 - **`lib/models/services/documento_storage_service.dart`:** Implementa o CRUD completo (**Create, Read, Update, Delete**) de `Documento` serializando a lista com `dart:convert` (`jsonEncode` e `jsonDecode`) no `shared_preferences`.
 - **`lib/models/services/banco_local_service.dart`:** Persiste usuários cadastrados via `shared_preferences` (com conta demo inicial `aluno@editdoc.com`) e integra o acesso ao repositório local de usuários e documentos.
 - **`lib/views/editor_view.dart` (Rota `/editor`):** Quarta tela integrada ao `DocumentosViewModel`, permitindo criar novos documentos, editar existentes, escolher categoria, acompanhar contagem de palavras/caracteres em tempo real e excluir com diálogo de confirmação (`confirmarExclusaoDocumento`).
+
+---
+
+# Parte III — Compilação Android (APK) e Publicação Web (Etapa Final)
+
+Com o código-fonte 100% em Dart puro e o pacote multiplataforma `shared_preferences`, a mesma base MVVM foi compilada sem alterações na lógica de negócio para **Android** e **Web em produção**:
+
+- **Estrutura Android (`android/`):** Criada via `flutter create --platforms=android --project-name edit_doc_flutter --org com.editdoc .`, com rótulo `EditDoc Flutter` em `AndroidManifest.xml` e memória do Gradle ajustada em `android/gradle.properties` (`-Xmx1536m` e `org.gradle.daemon=false`) para compilação estável em ambientes com RAM limitada.
+- **APK Release (`arm64`):** Gerado via `flutter build apk --release --target-platform android-arm64` (`build/app/outputs/flutter-apk/app-release.apk`, ~16,8 MB) e publicado na Release `v1.0.0`.
+- **Web em Produção (GitHub Pages):** Compilado com `flutter build web --release --base-href "/edit-doc-flutter/"` e publicado na branch `gh-pages`, disponibilizando o app em `https://mkalyl.github.io/edit-doc-flutter/`.
+- **Automação CI/CD (`.github/workflows/build-and-deploy.yml`):** Pipeline automatizado no GitHub Actions executando análise estática (`flutter analyze --no-fatal-infos`), testes unitários/widget (`flutter test`), build APK `arm64`, build Web e deploy contínuo em `gh-pages`.

@@ -46,6 +46,42 @@ lib/
 
 ---
 
+## Acesso Online e Instalador Android (Entrega Final)
+
+- **Versão Web (GitHub Pages):** [https://mkalyl.github.io/edit-doc-flutter/](https://mkalyl.github.io/edit-doc-flutter/)
+- **Instalador Android (APK `arm64`):** disponível na [Release `v1.0.0`](https://github.com/mkalyl/edit-doc-flutter/releases/tag/v1.0.0) (`app-release.apk`).
+
+---
+
+## Como Gerar o APK Android (Parte 2)
+
+O projeto possui a pasta `android/` já configurada com limite de memória ajustado para ambientes como o GitHub Codespaces (`-Xmx1536m` e `org.gradle.daemon=false` em `android/gradle.properties`):
+
+```bash
+sed -i 's/-Xmx[0-9]*[gGmM]/-Xmx1536m/g' android/gradle.properties && echo "org.gradle.daemon=false" >> android/gradle.properties
+flutter build apk --release --target-platform android-arm64
+```
+
+O instalador gerado fica em `build/app/outputs/flutter-apk/app-release.apk`.
+
+---
+
+## Como Publicar a Versão Web no GitHub Pages (Parte 3)
+
+```bash
+flutter build web --release --base-href "/edit-doc-flutter/"
+cd build/web
+git init
+git checkout -b gh-pages
+git add .
+git commit -m "Publica versao Web no GitHub Pages"
+git remote add origin https://github.com/mkalyl/edit-doc-flutter.git
+git push -f origin gh-pages
+cd ../..
+```
+
+---
+
 ## Como Validar Persistência e CRUD (Etapa 5)
 
 1. Faça login com a conta de demonstração **`aluno@editdoc.com`** / **`123456`** ou cadastre uma nova conta em **Criar nova conta**.
